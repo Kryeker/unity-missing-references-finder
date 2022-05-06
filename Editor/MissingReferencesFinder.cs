@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Experimental.SceneManagement;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 
 public class MissingReferencesFinder : MonoBehaviour {
@@ -19,7 +20,7 @@ public class MissingReferencesFinder : MonoBehaviour {
         showInitialProgressBar(scene.path);
 
         clearConsole();
-        
+
         var wasCancelled = false;
         var count = findMissingReferencesInScene(scene, 1, () => { wasCancelled = false; }, () => { wasCancelled = true; });
         showFinishDialog(wasCancelled, count);
@@ -28,7 +29,7 @@ public class MissingReferencesFinder : MonoBehaviour {
 	[MenuItem("Tools/Find Missing References/In current prefab", false, 51)]
 	public static void FindMissingReferencesInCurrentPrefab() {
 		var prefabStage = PrefabStageUtility.GetCurrentPrefabStage();
-        
+
 #if UNITY_2020_1_OR_NEWER
         var assetPath = prefabStage.assetPath;
 #else
@@ -113,12 +114,12 @@ public class MissingReferencesFinder : MonoBehaviour {
         #endregion
 
         // Warn the user to save the scene if it has unsaved changes. If the user selects "Cancel" the process is stopped.
-        // If the user selects "Don't save", saving is omitted but this still returns true so the process starts. This 
+        // If the user selects "Don't save", saving is omitted but this still returns true so the process starts. This
         // behavior is expected and correct (the user has been warned and they still chose not to save).
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) {
             return;
         }
-        
+
         var scenes = EditorBuildSettings.scenes;
         var progressWeight = 1 / (float) (scenes.Length + 1);
 
@@ -269,6 +270,9 @@ public class MissingReferencesFinder : MonoBehaviour {
                     continue;
                 }
 
+                var lastCallDepth = -3;
+                var lastCallName = string.Empty;
+                UnityEngine.Object lastCallTarget = null;
                 using (var so = new SerializedObject(c)) {
                     using (var sp = so.GetIterator()) {
                         while (sp.NextVisible(true)) {
@@ -278,6 +282,39 @@ public class MissingReferencesFinder : MonoBehaviour {
                                     showError(context, go, c.GetType().Name, ObjectNames.NicifyVariableName(sp.name));
                                     count++;
                                 }
+                            }
+
+                            if (sp.propertyType == SerializedPropertyType.Generic)
+                            {
+                                if (GetTypeByName(sp.type).IsSubclassOf(typeof(UnityEvent)))
+                                {
+                                    lastCallName = sp.displayName;
+                                }
+                            }
+                            if (sp.propertyPath.EndsWith(".m_PersistentCalls.m_Calls"))
+                            {
+                                lastCallDepth = sp.depth;
+                            }
+                            if (sp.depth == lastCallDepth + 2)
+                            {
+                                if (sp.propertyPath.EndsWith(".m_Target")
+                                    && sp.propertyType == SerializedPropertyType.ObjectReference)
+                                {
+                                    lastCallTarget = sp.objectReferenceValue;
+                                }
+
+                                if (sp.propertyPath.EndsWith(".m_MethodName")
+                                    && sp.type == "string"
+                                    && lastCallTarget != null
+                                    && lastCallTarget.GetType().GetMethod(sp.stringValue) == null)
+                                {
+                                    showError(context, go, c.GetType().Name, lastCallName);
+                                    count++;
+                                }
+                            }
+                            if (sp.depth < lastCallDepth)
+                            {
+                                lastCallDepth = -3;
                             }
                         }
                     }
@@ -319,6 +356,15 @@ public class MissingReferencesFinder : MonoBehaviour {
     private static string FullPath(GameObject go) {
         var parent = go.transform.parent;
         return parent == null ? go.name : FullPath(parent.gameObject) + "/" + go.name;
+    }
+
+    private static Type GetTypeByName(string name)
+    {
+        return AppDomain
+            .CurrentDomain
+            .GetAssemblies()
+            .SelectMany(asm => asm.GetTypes())
+            .FirstOrDefault(type => type.Name == name);
     }
 
     private static void clearConsole() {

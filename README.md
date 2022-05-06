@@ -9,7 +9,7 @@ Original credit to: http://www.li0rtal.com/find-missing-references-unity/
 
 Add the following line to your Packages/manifest.json file under dependencies:
 
-    "com.ecasillas.missingrefsfinder": "https://github.com/edcasillas/unity-missing-references-finder.git"
+    "com.ecasillas.missingrefsfinder": "https://github.com/Kryeker/unity-missing-references-finder.git"
     
 Open Unity again; the Package Manager will run and the package will be installed.
 
