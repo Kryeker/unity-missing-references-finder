@@ -243,7 +243,6 @@ public class MissingReferencesFinder : MonoBehaviour {
     }
 
     private static int findMissingReferences(string context, Queue<ObjectData> queue, Action onFinished, Action onCanceled, bool findInChildren = false, float currentProgress = 0f) {
-        _typesCache.Clear();
         var count = 0;
         while (queue.Any()) {
             var data = queue.Dequeue();
@@ -262,6 +261,7 @@ public class MissingReferencesFinder : MonoBehaviour {
                 if (EditorUtility.DisplayCancelableProgressBar($"Searching missing references in {context}",
                                                                go.name,
                                                                currentProgress)) {
+                    _typesCache.Clear();
                     onCanceled.Invoke();
                     return count;
                 }
@@ -333,6 +333,7 @@ public class MissingReferencesFinder : MonoBehaviour {
             }
         }
 
+        _typesCache.Clear();
         onFinished.Invoke();
         return count;
     }
