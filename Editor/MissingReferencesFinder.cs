@@ -9,6 +9,8 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 
 public class MissingReferencesFinder : MonoBehaviour {
+    private static Dictionary<string, Type> _typesCache = new Dictionary<string, Type>();
+
     private class ObjectData {
         public float ExpectedProgress;
         public GameObject GameObject;
@@ -241,6 +243,7 @@ public class MissingReferencesFinder : MonoBehaviour {
     }
 
     private static int findMissingReferences(string context, Queue<ObjectData> queue, Action onFinished, Action onCanceled, bool findInChildren = false, float currentProgress = 0f) {
+        _typesCache.Clear();
         var count = 0;
         while (queue.Any()) {
             var data = queue.Dequeue();
@@ -286,7 +289,8 @@ public class MissingReferencesFinder : MonoBehaviour {
 
                             if (sp.propertyType == SerializedPropertyType.Generic)
                             {
-                                if (GetTypeByName(sp.type).IsSubclassOf(typeof(UnityEvent)))
+                                Type type = GetTypeByName(sp.type);
+                                if (type?.IsSubclassOf(typeof(UnityEvent)) == true)
                                 {
                                     lastCallName = sp.displayName;
                                 }
@@ -303,10 +307,10 @@ public class MissingReferencesFinder : MonoBehaviour {
                                     lastCallTarget = sp.objectReferenceValue;
                                 }
 
-                                if (sp.propertyPath.EndsWith(".m_MethodName")
+                                if (sp.propertyPath.EndsWith(".m_MethodName", StringComparison.InvariantCulture)
                                     && sp.type == "string"
                                     && lastCallTarget != null
-                                    && lastCallTarget.GetType().GetMethod(sp.stringValue) == null)
+                                    && lastCallTarget.GetType().GetMethods().All(x=>x.Name != sp.stringValue))
                                 {
                                     showError(context, go, c.GetType().Name, lastCallName);
                                     count++;
@@ -360,11 +364,25 @@ public class MissingReferencesFinder : MonoBehaviour {
 
     private static Type GetTypeByName(string name)
     {
-        return AppDomain
-            .CurrentDomain
-            .GetAssemblies()
-            .SelectMany(asm => asm.GetTypes())
-            .FirstOrDefault(type => type.Name == name);
+        if (_typesCache.ContainsKey(name))
+        {
+            return _typesCache[name];
+        }
+        else
+        {
+              Type result = AppDomain
+                    .CurrentDomain
+                    .GetAssemblies()
+                    .SelectMany(asm => asm.GetTypes())
+                    .FirstOrDefault(type => type.Name == name);
+            _typesCache.Add(name, result);
+            return result;
+        }
+    }
+
+    private static void clearTypeCache()
+    {
+        _typesCache.Clear();
     }
 
     private static void clearConsole() {
